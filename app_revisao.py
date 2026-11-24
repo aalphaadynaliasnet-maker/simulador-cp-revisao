@@ -76,8 +76,7 @@ def gerar_escala_base():
         else:
             registos.append({"OS": num_os, "Tipo": "Bordo", "Inicio": "08:00", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 300, "Rep_Fora": "Não", "Obs": "Serviço Escala"})
     
-    df = pd.DataFrame(registos)
-    return df
+    return pd.DataFrame(registos)
 
 def carregar_escala():
     if os.path.exists(FICHEIRO_ESCALA):
@@ -150,9 +149,14 @@ rh = round((rm * 12.0) / (52.0 * 40.0), 2)
 tab1, tab2, tab3 = st.tabs(["📅 1. Escala Mensal", "🧾 2. Simulador de Recibo", "⚙️ 3. Gerir Escala (OS)"])
 
 with tab1:
+    meses_pt = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+    }
     col1, col2, col3 = st.columns(3)
     with col1:
-        mes = st.selectbox("Mês", list(range(1, 13)), index=10, format_func=lambda x: calendar.month_name[x])
+        mes = st.selectbox("Mês", list(meses_pt.keys()), index=10, format_func=lambda x: meses_pt[x])
     with col2:
         ano = st.number_input("Ano", min_value=2024, max_value=2030, value=2026)
     with col3:
@@ -170,6 +174,3 @@ with tab1:
         linha_os = df_escala[df_escala["OS"] == os_atual].iloc[0]
         tipo = linha_os["Tipo"]
         inicio = linha_os["Inicio"]
-        fim = linha_os["Fim"]
-        min_rev = int(linha_os["Min_Rev"]) if linha_os["Min_Rev"] != "" else 0
-        rep_fora = linha_os["Rep_Fora"]
