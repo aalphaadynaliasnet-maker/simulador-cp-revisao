@@ -119,6 +119,7 @@ st.title("🚆 Simulador de Abonos e Vencimento — Revisão Comercial (CP)")
 st.markdown("Baseado no **AE da CP (BTE 39/2024)**, **Tabela SFRCI (09/2026)** e **Escala COBR20**.")
 
 df_escala = carregar_escala()
+mapa_escala = df_escala.set_index("OS").to_dict(orient="index")
 
 with st.sidebar:
     st.header("👤 Dados do Trabalhador")
@@ -162,7 +163,7 @@ with tab1:
     with col3:
         os_dia_1 = st.number_input("Qual a tua OS no Dia 1 do mês?", min_value=1, max_value=120, value=1)
 
-    num_dias = calendar.monthrange(ano, mes)[1]
+    _, num_dias = calendar.monthrange(ano, mes)
     dias_semana_pt = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 
     dados_mes = []
@@ -171,6 +172,3 @@ with tab1:
         dia_sem = dias_semana_pt[data_atual.weekday()]
         os_atual = ((os_dia_1 - 1 + (dia - 1)) % 120) + 1
         
-        linha_os = df_escala[df_escala["OS"] == os_atual].iloc[0]
-        tipo = linha_os["Tipo"]
-        inicio = linha_os["Inicio"]
