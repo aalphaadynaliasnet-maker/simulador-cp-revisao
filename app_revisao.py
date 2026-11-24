@@ -147,28 +147,34 @@ rm = round(retrib_base + valor_diut + valor_sub_escala, 2)
 rd = round(rm / 30.0, 2)
 rh = round((rm * 12.0) / (52.0 * 40.0), 2)
 
-tab1, tab2, tab3 = st.tabs(["📅 1. Escala Mensal", "🧾 2. Simulador de Recibo", "⚙️ 3. Gerir Escala (OS)"])
+# Menu de Navegação Infalível
+pagina = st.radio(
+    "Escolhe a secção:",
+    ["📅 1. Escala Mensal", "🧾 2. Simulador de Recibo", "⚙️ 3. Gerir Escala (OS)"],
+    horizontal=True
+)
+st.divider()
 
-with tab1:
-    meses_pt = {
-        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
-    }
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        mes = st.selectbox("Mês", list(meses_pt.keys()), index=10, format_func=lambda x: meses_pt[x])
-    with col2:
-        ano = st.number_input("Ano", min_value=2024, max_value=2030, value=2026)
-    with col3:
-        os_dia_1 = st.number_input("Qual a tua OS no Dia 1 do mês?", min_value=1, max_value=120, value=1)
+# Preparação dos dados do mês (partilhada entre Escala Mensal e Recibo)
+meses_pt = {
+    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+}
+col1, col2, col3 = st.columns(3)
+with col1:
+    mes = st.selectbox("Mês", list(meses_pt.keys()), index=10, format_func=lambda x: meses_pt[x])
+with col2:
+    ano = st.number_input("Ano", min_value=2024, max_value=2030, value=2026)
+with col3:
+    os_dia_1 = st.number_input("Qual a tua OS no Dia 1 do mês?", min_value=1, max_value=120, value=1)
 
-    _, num_dias = calendar.monthrange(ano, mes)
-    dias_semana_pt = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+_, num_dias = calendar.monthrange(ano, mes)
+dias_semana_pt = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 
-    dados_mes = []
-    for dia in range(1, num_dias + 1):
-        data_atual = datetime(ano, mes, dia)
-        dia_sem = dias_semana_pt[data_atual.weekday()]
-        os_atual = ((os_dia_1 - 1 + (dia - 1)) % 120) + 1
-        
+dados_mes = []
+for dia in range(1, num_dias + 1):
+    data_atual = datetime(ano, mes, dia)
+    dia_sem = dias_semana_pt[data_atual.weekday()]
+    os_atual = ((os_dia_1 - 1 + (dia - 1)) % 120) + 1
+    
