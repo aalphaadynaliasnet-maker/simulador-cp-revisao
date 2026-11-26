@@ -3,10 +3,9 @@ import pandas as pd
 import calendar
 from datetime import datetime, timedelta
 import os
+import re
+import pdfplumber
 
-# ==============================================================================
-# 1. TABELA INDICIÁRIA E VALORES PECUNIÁRIOS (SFRCI 09/2026 + AE CP)
-# ==============================================================================
 TABELA_INDICES = {
     128: 1116.50, 131: 1133.26, 134: 1150.03, 137: 1166.78, 140: 1183.54,
     144: 1205.88, 148: 1228.24, 152: 1250.59, 156: 1272.93, 161: 1300.88,
@@ -22,74 +21,51 @@ INDICES_LISTA = (
     231, 238, 245, 252, 259, 266, 273, 280, 288, 296
 )
 
-VALORES_PECUNIARIOS = {
-    "diuturnidade_unit": 25.00,
-    "subsidio_escala_pct": 0.185,
-    "pp_revisao": 6.20,
-    "irev": 0.80,
-    "pp_geral": 6.50,
-    "itinerancia": 8.30,
-    "subsidio_refeicao": 10.45,
-    "limite_isencao_sr": 10.20,
-    "abono_transporte": 4.91,
-    "repouso_inf_18h": 30.00,
-    "repouso_sup_18h": 32.00,
-    "taxa_ss": 0.11
-}
-
-FICHEIRO_ESCALA = "escala_cobr20.csv"
-
 def gerar_escala_base():
     descansos = {1, 7, 8, 15, 16, 23, 24, 31, 32, 39, 40, 47, 48, 55, 56, 63, 64, 71, 72, 79, 80, 87, 88, 95, 96, 103, 104, 111, 112, 119, 120}
-    os_especificas = {
-        2:  {"Tipo": "Bordo", "Inicio": "13:15", "Fim": "21:12", "PNT": "07:57", "Min_Rev": 320, "Rep_Fora": "Sim (<18h)", "Obs": "5405 GUA"},
-        3:  {"Tipo": "Bordo", "Inicio": "06:50", "Fim": "14:50", "PNT": "08:00", "Min_Rev": 300, "Rep_Fora": "Não", "Obs": "5402 COB"},
-        4:  {"Tipo": "Bordo", "Inicio": "05:03", "Fim": "11:59", "PNT": "06:56", "Min_Rev": 290, "Rep_Fora": "Não", "Obs": "4500/16804"},
-        5:  {"Tipo": "Bordo", "Inicio": "05:25", "Fim": "12:46", "PNT": "07:21", "Min_Rev": 310, "Rep_Fora": "Não", "Obs": "4601/4609"},
-        6:  {"Tipo": "Bordo", "Inicio": "05:18", "Fim": "12:37", "PNT": "07:19", "Min_Rev": 305, "Rep_Fora": "Não", "Obs": "4500/4513"},
-        9:  {"Tipo": "Bordo", "Inicio": "11:22", "Fim": "19:22", "PNT": "08:00", "Min_Rev": 330, "Rep_Fora": "Sim (<18h)", "Obs": "16812/5403 GUA"},
-        10: {"Tipo": "Bordo", "Inicio": "04:50", "Fim": "12:50", "PNT": "08:00", "Min_Rev": 310, "Rep_Fora": "Não", "Obs": "5400 COB"},
-        11: {"Tipo": "SUPRA", "Inicio": "08:00", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 0,   "Rep_Fora": "Não", "Obs": "SUPRA"},
-        12: {"Tipo": "Bordo", "Inicio": "05:57", "Fim": "13:27", "PNT": "07:30", "Min_Rev": 325, "Rep_Fora": "Sim (<18h)", "Obs": "4502/16812 FFO"},
-        13: {"Tipo": "Bordo", "Inicio": "06:16", "Fim": "11:19", "PNT": "06:00", "Min_Rev": 260, "Rep_Fora": "Não", "Obs": "16803/16811"},
-        14: {"Tipo": "Bordo", "Inicio": "05:57", "Fim": "11:57", "PNT": "06:00", "Min_Rev": 250, "Rep_Fora": "Não", "Obs": "4502/4511"},
-        17: {"Tipo": "Bordo", "Inicio": "11:49", "Fim": "19:49", "PNT": "08:00", "Min_Rev": 340, "Rep_Fora": "Não", "Obs": "524/4425/731"},
-        18: {"Tipo": "Bordo", "Inicio": "12:45", "Fim": "19:18", "PNT": "06:33", "Min_Rev": 280, "Rep_Fora": "Não", "Obs": "5401/5404"},
-        19: {"Tipo": "Bordo", "Inicio": "14:41", "Fim": "21:00", "PNT": "06:19", "Min_Rev": 270, "Rep_Fora": "Não", "Obs": "4619/4680"},
-        20: {"Tipo": "Bordo", "Inicio": "11:35", "Fim": "19:42", "PNT": "08:07", "Min_Rev": 350, "Rep_Fora": "Sim (<18h)", "Obs": "5208/5213 ESV"},
-        21: {"Tipo": "Bordo", "Inicio": "06:28", "Fim": "13:54", "PNT": "07:26", "Min_Rev": 315, "Rep_Fora": "Não", "Obs": "5200/5204"},
-        22: {"Tipo": "Bordo", "Inicio": "11:41", "Fim": "18:55", "PNT": "07:14", "Min_Rev": 300, "Rep_Fora": "Não", "Obs": "720/821"},
-        33: {"Tipo": "Bordo", "Inicio": "16:12", "Fim": "23:59", "PNT": "07:49", "Min_Rev": 330, "Rep_Fora": "Sim (<18h)", "Obs": "4512/16830 FFO"},
-        34: {"Tipo": "Bordo", "Inicio": "12:43", "Fim": "18:50", "PNT": "06:07", "Min_Rev": 265, "Rep_Fora": "Não", "Obs": "16817/4676"},
-        60: {"Tipo": "Bordo", "Inicio": "01:59", "Fim": "08:34", "PNT": "06:35", "Min_Rev": 270, "Rep_Fora": "Não", "Obs": "3400/4505"},
-        89: {"Tipo": "SUPRA", "Inicio": "08:00", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 0,   "Rep_Fora": "Não", "Obs": "SUPRA"},
-        90: {"Tipo": "SUPRA", "Inicio": "08:00", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 0,   "Rep_Fora": "Não", "Obs": "SUPRA"},
-        114:{"Tipo": "SUPRA", "Inicio": "08:00", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 0,   "Rep_Fora": "Não", "Obs": "SUPRA"},
-        115:{"Tipo": "SUPRA", "Inicio": "08:00", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 0,   "Rep_Fora": "Não", "Obs": "SUPRA"},
-        116:{"Tipo": "Bordo", "Inicio": "18:00", "Fim": "23:59", "PNT": "06:02", "Min_Rev": 250, "Rep_Fora": "Sim (<18h)", "Obs": "16830 FFO"},
-        117:{"Tipo": "Bordo", "Inicio": "12:50", "Fim": "20:41", "PNT": "07:51", "Min_Rev": 335, "Rep_Fora": "Não", "Obs": "4670/4521"},
-        118:{"Tipo": "Bordo", "Inicio": "13:58", "Fim": "21:29", "PNT": "07:31", "Min_Rev": 310, "Rep_Fora": "Não", "Obs": "802/6455"},
-    }
-
-    registos = []
+    registos = list()
     for num_os in range(1, 121):
         if num_os in descansos:
-            registos.append({"OS": num_os, "Tipo": "Descanso", "Inicio": "", "Fim": "", "PNT": "00:00", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "Descanso Semanal"})
-        elif num_os in os_especificas:
-            item = os_especificas[num_os].copy()
-            item["OS"] = num_os
-            registos.append(item)
+            registos.append({"OS": num_os, "Tipo": "Descanso", "Inicio": "", "Fim": "", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "Descanso Semanal"})
         else:
-            registos.append({"OS": num_os, "Tipo": "Bordo", "Inicio": "08:00", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 300, "Rep_Fora": "Não", "Obs": "Serviço Escala"})
-    
+            registos.append({"OS": num_os, "Tipo": "Bordo", "Inicio": "08:00", "Fim": "16:00", "Min_Rev": 300, "Rep_Fora": "Não", "Obs": f"Serviço OS {num_os}"})
     return pd.DataFrame(registos)
 
-def obter_escala_ativa():
-    if "df_escala_custom" in st.session_state:
-        return st.session_state["df_escala_custom"]
-    if os.path.exists(FICHEIRO_ESCALA):
-        return pd.read_csv(FICHEIRO_ESCALA).fillna("")
-    return gerar_escala_base()
+def ler_pdf_escala_cp(ficheiro_pdf):
+    registos_por_os = dict()
+    with pdfplumber.open(ficheiro_pdf) as pdf:
+        os_atual = None
+        for page in pdf.pages:
+            tabelas = page.extract_tables()
+            for tabela in tabelas:
+                for linha in tabela:
+                    if not linha or len(linha) < 5:
+                        continue
+                    celulas = tuple(str(c).replace("\n", " ").strip() if c else "" for c in linha)
+                    if "Dias da" in celulas or "EM VIGOR" in celulas:
+                        continue
+                    primeira = next(iter(celulas), "")
+                    if primeira.isdigit():
+                        os_atual = int(primeira)
+                    if os_atual is None:
+                        continue
+                    texto_linha = " ".join(celulas)
+                    if os_atual not in registos_por_os:
+                        if "Descanso" in texto_linha:
+                            registos_por_os.update({os_atual: {"OS": os_atual, "Tipo": "Descanso", "Inicio": "", "Fim": "", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "Descanso"}})
+                        elif "SUPRA" in texto_linha:
+                            registos_por_os.update({os_atual: {"OS": os_atual, "Tipo": "SUPRA", "Inicio": "08:00", "Fim": "16:00", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "SUPRA"}})
+                        else:
+                            horas = re.findall(r"\b\d{1,2}:\d{2}\b", texto_linha)
+                            it_h = iter(horas)
+                            inicio = next(it_h, "08:00")
+                            fim = next(it_h, "16:00")
+                            rep_fora = "Sim (<18h)" if texto_linha.lower().endswith(" x") or " x " in texto_linha.lower() else "Não"
+                            registos_por_os.update({os_atual: {"OS": os_atual, "Tipo": "Bordo", "Inicio": inicio, "Fim": fim, "Min_Rev": 300, "Rep_Fora": rep_fora, "Obs": texto_linha[:40]}})
+    if not registos_por_os:
+        return gerar_escala_base()
+    lista_ordenada = tuple(registos_por_os.get(k) for k in sorted(registos_por_os.keys()))
+    return pd.DataFrame(lista_ordenada)
 
 def calcular_horas_noturnas(inicio_str, fim_str):
     if not inicio_str or not fim_str or ":" not in str(inicio_str) or ":" not in str(fim_str):
@@ -101,7 +77,6 @@ def calcular_horas_noturnas(inicio_str, fim_str):
         dt_fim = datetime(2026, 1, 1, h2, m2)
         if dt_fim <= dt_inicio:
             dt_fim += timedelta(days=1)
-        
         minutos_noturnos = 0
         atual = dt_inicio
         while atual < dt_fim:
@@ -121,56 +96,101 @@ def calcular_abono_falhas(receita_total):
         valor = (receita_total * 0.045) + 2.55
     return round(max(15.00, valor), 2)
 
-st.set_page_config(page_title="Simulador Vencimento CP - Revisão", page_icon="🚆", layout="wide")
+st.set_page_config(page_title="Simulador CP Revisão", page_icon="🚆", layout="wide")
+st.title("🚆 Simulador de Abonos — Revisão Comercial (CP)")
 
-st.title("🚆 Simulador de Abonos e Vencimento — Revisão Comercial (CP)")
-st.markdown("Baseado no **AE da CP (BTE 39/2024)**, **Tabela SFRCI (09/2026)** e **Escala COBR20**.")
+# --- BOTÃO DE CARREGAR ESCALA SEMPRE VISÍVEL NO TOPO ---
+with st.expander("📂 CARREGAR ESCALA DO PC (PDF da CP / Excel / CSV) — Clica aqui para abrir", expanded=True):
+    ficheiro_carregado = st.file_uploader("Seleciona o ficheiro da escala no teu computador", type=("pdf", "csv", "xlsx"))
+    if ficheiro_carregado is not None:
+        try:
+            nome_fich = ficheiro_carregado.name.lower()
+            if nome_fich.endswith(".pdf"):
+                df_novo = ler_pdf_escala_cp(ficheiro_carregado)
+            elif nome_fich.endswith(".csv"):
+                df_novo = pd.read_csv(ficheiro_carregado).fillna("")
+            else:
+                df_novo = pd.read_excel(ficheiro_carregado).fillna("")
+            st.session_state.update({"df_escala_custom": df_novo, "nome_escala_atual": ficheiro_carregado.name})
+            st.success(f"✅ Escala '{ficheiro_carregado.name}' carregada com {len(df_novo)} OS!")
+        except Exception as e:
+            st.error(f"Erro ao ler ficheiro: {e}")
 
-df_escala = obter_escala_ativa()
+df_escala = st.session_state.get("df_escala_custom", gerar_escala_base())
 mapa_escala = df_escala.set_index("OS").to_dict(orient="index")
+max_os = int(df_escala.get("OS").max()) if len(df_escala) > 0 else 120
 
-# --- BARRA LATERAL ---
-with st.sidebar:
-    st.header("👤 Dados do Trabalhador")
-    indice = st.selectbox("Índice Salarial (ORV: 137 a 171)", INDICES_LISTA, index=3)
-    num_diut = st.slider("N.º de Diuturnidades (25,00 €/cada)", 0, 5, 2)
-    tem_escala = st.checkbox("Subsídio de Escala (18,50%)", value=True)
-    tem_transporte = st.checkbox("Disponibilidade 00h-06h30 (Abono Transp.)", value=True)
-    
-    st.divider()
-    st.header("💶 Vendas a Bordo no Mês")
-    receita_bordo = st.number_input("Valor Total da Receita (€)", min_value=0.0, value=0.0, step=10.0, format="%.2f")
-    qtd_bilhetes = st.number_input("Quantidade de Bilhetes Vendidos", min_value=0, value=0, step=1)
-    valor_por_bilhete = st.number_input("Comissão/Valor por Bilhete (€)", min_value=0.0, value=0.0, step=0.05, format="%.2f")
+# --- MENU LATERAL ---
+st.sidebar.header("👤 Dados do Trabalhador")
+indice = st.sidebar.selectbox("Índice Salarial", INDICES_LISTA, index=3)
+num_diut = st.sidebar.slider("Diuturnidades (25 €)", 0, 5, 2)
+tem_escala = st.sidebar.checkbox("Subsídio de Escala (18,5%)", value=True)
+tem_transporte = st.sidebar.checkbox("Abono Transporte (4,91 €/dia)", value=True)
 
-    st.divider()
-    st.header("🏛️ Descontos e Retenções")
-    taxa_irs = st.number_input("Taxa de Retenção IRS (%)", min_value=0.0, max_value=50.0, value=14.5, step=0.5)
-    quota_sindical_pct = st.number_input("Quota Sindical (% sobre Base)", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
-    outros_descontos = st.number_input("Outros Descontos Fixos (€)", min_value=0.0, value=0.0, step=1.0)
+st.sidebar.divider()
+st.sidebar.header("💶 Vendas a Bordo")
+receita_bordo = st.sidebar.number_input("Receita Total (€)", min_value=0.0, value=0.0, step=10.0)
+qtd_bilhetes = st.sidebar.number_input("Qtd. Bilhetes Vendidos", min_value=0, value=0, step=1)
+valor_por_bilhete = st.sidebar.number_input("Comissão por Bilhete (€)", min_value=0.0, value=0.0, step=0.05)
 
+st.sidebar.divider()
+st.sidebar.header("🏛️ Descontos")
+taxa_irs = st.sidebar.number_input("Taxa IRS (%)", min_value=0.0, max_value=50.0, value=14.5, step=0.5)
+quota_sindical_pct = st.sidebar.number_input("Quota Sindical (%)", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
+outros_descontos = st.sidebar.number_input("Outros Descontos (€)", min_value=0.0, value=0.0, step=1.0)
+
+# --- CÁLCULOS BASE ---
 retrib_base = TABELA_INDICES.get(indice, 1166.78)
-valor_diut = num_diut * VALORES_PECUNIARIOS.get("diuturnidade_unit", 25.0)
-valor_sub_escala = round(retrib_base * VALORES_PECUNIARIOS.get("subsidio_escala_pct", 0.185), 2) if tem_escala else 0.0
+valor_diut = num_diut * 25.00
+valor_sub_escala = round(retrib_base * 0.185, 2) if tem_escala else 0.0
 rm = round(retrib_base + valor_diut + valor_sub_escala, 2)
-rd = round(rm / 30.0, 2)
 rh = round((rm * 12.0) / (52.0 * 40.0), 2)
 
-# --- MENU DE NAVEGAÇÃO ---
-pagina = st.radio(
-    "Navegação:",
-    ("📅 1. Escala Mensal (Escolher Serviço)", "🧾 2. Simulador de Recibo", "⚙️ 3. Carregar / Gerir Escala (PC)"),
-    horizontal=True
-)
 st.divider()
+st.subheader("📅 1. Escolher o Serviço e Mês")
+mes = st.selectbox("Mês", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), index=10)
+ano = st.number_input("Ano", min_value=2024, max_value=2030, value=2026)
+os_dia_1 = st.number_input(f"Qual é a tua OS no Dia 1 do mês? (1 a {max_os})", min_value=1, max_value=max_os, value=1)
 
-# ==============================================================================
-# SECÇÃO 1: ESCALA MENSAL E ESCOLHA DO SERVIÇO
-# ==============================================================================
-if pagina == "📅 1. Escala Mensal (Escolher Serviço)":
-    meses_pt = {
-        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
-    }
-    
+_, num_dias = calendar.monthrange(ano, mes)
+dias_semana_pt = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
+nome_escala = st.session_state.get("nome_escala_atual", "Base")
+chave_atual = f"{nome_escala}-{ano}-{mes}-{os_dia_1}"
+
+if st.button("🔄 Gerar / Reiniciar Mês") or st.session_state.get("chave_mes") != chave_atual or "df_mes" not in st.session_state:
+    dados_mes = list()
+    for dia in range(1, num_dias + 1):
+        data_atual = datetime(ano, mes, dia)
+        dia_sem = dias_semana_pt.index(dias_semana_pt) if False else tuple(dias_semana_pt).__getitem__(data_atual.weekday())
+        os_atual = ((os_dia_1 - 1 + (dia - 1)) % max_os) + 1
+        linha_os = mapa_escala.get(os_atual, {"Tipo": "Descanso", "Inicio": "", "Fim": "", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": ""})
+        tipo = linha_os.get("Tipo", "Descanso")
+        inicio = linha_os.get("Inicio", "")
+        fim = linha_os.get("Fim", "")
+        min_rev = int(float(linha_os.get("Min_Rev", 0))) if str(linha_os.get("Min_Rev", "")).strip() != "" else 0
+        rep_fora = linha_os.get("Rep_Fora", "Não")
+        obs = linha_os.get("Obs", "")
+        h_noturnas = calcular_horas_noturnas(inicio, fim) if tipo in ("Bordo", "SUPRA") else 0.0
+        dados_mes.append({
+            "Dia": dia, "Semana": dia_sem, "OS": os_atual, "Serviço": obs,
+            "Situação": tipo, "Início": inicio, "Fim": fim,
+            "H. Noturnas": h_noturnas, "Min. Revisão (mr)": min_rev,
+            "H. Extras": 0.0, "Dia Desc. Trab.": "Não", "Repouso Fora": rep_fora, "RENFE": False
+        })
+    st.session_state.update({"df_mes": pd.DataFrame(dados_mes), "chave_mes": chave_atual})
+
+df_mes_editado = st.data_editor(
+    st.session_state.get("df_mes"),
+    column_config={
+        "Situação": st.column_config.SelectboxColumn("Situação", options=("Bordo", "SUPRA", "Descanso", "Feriado", "Férias", "Formação", "Falta")),
+        "Dia Desc. Trab.": st.column_config.SelectboxColumn("Dia Desc./Fer. Trab.", options=("Não", "Com Compensação (+50%)", "Sem Compensação (+75%)")),
+        "Repouso Fora": st.column_config.SelectboxColumn("Repouso Fora Sede", options=("Não", "Sim (<18h)", "Sim (>18h)")),
+    },
+    use_container_width=True,
+    hide_index=True
+)
+
+st.divider()
+st.subheader("🧾 2. Resumo do Recibo Calculado")
+
+dias_bordo = len(df_mes_editado.query("Situação == 'Bordo'"))
