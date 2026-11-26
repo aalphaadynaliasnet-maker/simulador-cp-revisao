@@ -78,9 +78,14 @@ def gerar_escala_base():
     
     return pd.DataFrame(registos)
 
-def carregar_escala():
+def obter_escala_ativa():
+    # 1. Se o utilizador carregou um ficheiro do PC nesta sessão, usa esse
+    if "df_escala_custom" in st.session_state:
+        return st.session_state["df_escala_custom"]
+    # 2. Se existir no GitHub, carrega do ficheiro
     if os.path.exists(FICHEIRO_ESCALA):
         return pd.read_csv(FICHEIRO_ESCALA).fillna("")
+    # 3. Caso contrário, usa a escala base COBR20
     return gerar_escala_base()
 
 def calcular_horas_noturnas(inicio_str, fim_str):
@@ -118,9 +123,10 @@ st.set_page_config(page_title="Simulador Vencimento CP - Revisão", page_icon="�
 st.title("🚆 Simulador de Abonos e Vencimento — Revisão Comercial (CP)")
 st.markdown("Baseado no **AE da CP (BTE 39/2024)**, **Tabela SFRCI (09/2026)** e **Escala COBR20**.")
 
-df_escala = carregar_escala()
+df_escala = obter_escala_ativa()
 mapa_escala = df_escala.set_index("OS").to_dict(orient="index")
 
+# --- BARRA LATERAL ---
 with st.sidebar:
     st.header("👤 Dados do Trabalhador")
     indice = st.selectbox("Índice Salarial (ORV: 137 a 171)", list(TABELA_INDICES.keys()), index=3)
@@ -147,34 +153,24 @@ rm = round(retrib_base + valor_diut + valor_sub_escala, 2)
 rd = round(rm / 30.0, 2)
 rh = round((rm * 12.0) / (52.0 * 40.0), 2)
 
-# Menu de Navegação Infalível
+# --- MENU DE NAVEGAÇÃO ---
 pagina = st.radio(
-    "Escolhe a secção:",
-    ["📅 1. Escala Mensal", "🧾 2. Simulador de Recibo", "⚙️ 3. Gerir Escala (OS)"],
+    "Navegação:",
+    ["📅 1. Escala Mensal (Escolher Serviço)", "🧾 2. Simulador de Recibo", "⚙️ 3. Carregar / Gerir Escala (PC)"],
     horizontal=True
 )
 st.divider()
 
-# Preparação dos dados do mês (partilhada entre Escala Mensal e Recibo)
-meses_pt = {
-    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
-}
-col1, col2, col3 = st.columns(3)
-with col1:
-    mes = st.selectbox("Mês", list(meses_pt.keys()), index=10, format_func=lambda x: meses_pt[x])
-with col2:
-    ano = st.number_input("Ano", min_value=2024, max_value=2030, value=2026)
-with col3:
-    os_dia_1 = st.number_input("Qual a tua OS no Dia 1 do mês?", min_value=1, max_value=120, value=1)
-
-_, num_dias = calendar.monthrange(ano, mes)
-dias_semana_pt = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
-
-dados_mes = []
-for dia in range(1, num_dias + 1):
-    data_atual = datetime(ano, mes, dia)
-    dia_sem = dias_semana_pt[data_atual.weekday()]
-    os_atual = ((os_dia_1 - 1 + (dia - 1)) % 120) + 1
+# ==============================================================================
+# SECÇÃO 1: ESCALA MENSAL E ESCOLHA DO SERVIÇO
+# ==============================================================================
+if pagina == "📅 1. Escala Mensal (Escolher Serviço)":
+    meses_pt = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+    }
     
+    st.subheader("1️⃣ Define a tua rotação neste mês")
+    c_mes, c_ano, c_os1, c_btn = st.columns([1, 1, 1.5, 1.5])
+    with c_mes:
