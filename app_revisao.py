@@ -34,8 +34,8 @@ def gerar_escala_base():
     return pd.DataFrame(registos)
 
 def ler_pdf_escala_cp(ficheiro_pdf):
-    """Lê TODAS as 120 OS e todas as suas variantes (N, S, F, V) de todas as páginas do PDF da CP."""
     registos = list()
+    contador_linha = 0
     with pdfplumber.open(ficheiro_pdf) as pdf:
         os_atual = None
         for page in pdf.pages:
@@ -49,14 +49,12 @@ def ler_pdf_escala_cp(ficheiro_pdf):
                     if not texto_completo or "EM VIGOR DESDE" in texto_completo or "Dias da Semana" in texto_completo or "F.500.02.002" in texto_completo:
                         continue
 
-                    # Detetar número da OS na 1.ª coluna (1 a 120)
                     c0 = next(iter(celulas), "")
                     if c0.isdigit() and 1 <= int(c0) <= 150:
                         os_atual = int(c0)
                     if os_atual is None:
                         continue
 
-                    # Extrair colunas por posição segura
                     it_c = iter(celulas)
                     _ = next(it_c, "")
                     regime = next(it_c, "")
@@ -69,11 +67,10 @@ def ler_pdf_escala_cp(ficheiro_pdf):
                     rep_s = next(it_c, "")
                     rep_f = next(it_c, "")
 
-                    # Ignorar linhas de continuação sem regime nem designação
                     if not regime and not designacao and not hora_ini and not hora_fim:
                         continue
 
-                    # Identificar Tipo de Serviço
+                    contador_linha += 1
                     if "Descanso" in texto_completo:
                         tipo = "Descanso"
                         min_rev = 0
@@ -85,32 +82,26 @@ def ler_pdf_escala_cp(ficheiro_pdf):
                         rep_fora = "Não"
                         desc_curta = "SUPRA"
                     else:
-                        # Verificar se é só Reserva ou se tem comboios comerciais
                         tem_comboios = bool(re.search(r"\b\d{3,5}\b", designacao))
                         tipo = "Bordo" if tem_comboios else "Reserva"
-                        
-                        # Calcular PNT em minutos e estimar minutos de revisão (descontando TR 45m e s/s)
                         horas_pnt = re.findall(r"\b\d{1,2}:\d{2}\b", pnt)
                         if horas_pnt:
                             hp, mp = map(int, next(iter(horas_pnt)).split(":"))
                             total_pnt_min = hp * 60 + mp
                         else:
                             total_pnt_min = 420
-                        
                         desconto_tr = 45 if "(TR)" in designacao else 0
                         qtd_ss = len(re.findall(r"s/s", designacao))
                         min_rev = max(0, total_pnt_min - desconto_tr - (qtd_ss * 35)) if tipo == "Bordo" else 0
-
-                        # Verificar se termina fora da sede (REP F marcado com x ou local fim != local ini/sede)
                         if rep_f.lower() == "x" or (loc_fim and loc_fim not in ("COB", "")):
                             rep_fora = "Sim (<18h)"
                         else:
                             rep_fora = "Não"
-                        desc_curta = designacao[:42] if designacao else f"Serviço OS {os_atual}"
+                        desc_curta = designacao[:38] if designacao else f"Serviço OS {os_atual}"
 
                     horario_txt = f"{hora_ini}-{hora_fim}" if hora_ini or hora_fim else pnt
                     reg_txt = regime if regime else "Geral"
-                    codigo_label = f"OS {os_atual:03d} | {reg_txt} | {horario_txt} | {desc_curta}"
+                    codigo_label = f"OS {os_atual:03d} (#{contador_linha}) | {reg_txt} | {horario_txt} | {desc_curta}"
 
                     registos.append({
                         "Codigo": codigo_label,
@@ -201,3 +192,15 @@ st.sidebar.divider()
 st.sidebar.header("💶 Vendas a Bordo")
 receita_bordo = st.sidebar.number_input("Receita Total (€)", min_value=0.0, value=0.0, step=10.0)
 qtd_bilhetes = st.sidebar.number_input("Qtd. Bilhetes Vendidos", min_value=0, value=0, step=1)
+valor_por_bilhete = st.sidebar.number_input("Comissão por Bilhete (€)", min_value=0.0, value=0.0, step=0.05)
+
+st.sidebar.divider()
+st.sidebar.header("🏛️ Descontos")
+taxa_irs = st.sidebar.number_input("Taxa IRS (%)", min_value=0.0, max_value=50.0, value=14.5, step=0.5)
+quota_sindical_pct = st.sidebar.number_input("Quota Sindical (%)", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
+outros_descontos = st.sidebar.number_input("Outros Descontos (€)", min_value=0.0, value=0.0, step=1.0)
+
+# --- CÁLCULOS BASE ---
+retrib_base = TABELA_INDICES.get(indice, 1166.78)
+valor_diut = num_diut * 25.00
+valor_sub_escala = round(retrib_base * 0.185, 2) if tem_escala else 0.0
