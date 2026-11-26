@@ -186,7 +186,7 @@ with st.expander("📂 1. CARREGAR ESCALA DO PC (PDF da CP / Excel / CSV)", expa
             except Exception as e:
                 st.error(f"Erro ao ler ficheiro: {e}")
 
-df_escala = st.session_state.get("df_escala_custom", gerar_escala_base())
+df_escala = st.session_state.get("df_escala_custom", gerar_escala_base()).drop_duplicates(subset="Codigo")
 lista_codigos_os = tuple(df_escala.get("Codigo").tolist())
 mapa_por_codigo = df_escala.set_index("Codigo").to_dict(orient="index")
 
