@@ -79,13 +79,10 @@ def gerar_escala_base():
     return pd.DataFrame(registos)
 
 def obter_escala_ativa():
-    # 1. Se o utilizador carregou um ficheiro do PC nesta sessão, usa esse
     if "df_escala_custom" in st.session_state:
         return st.session_state["df_escala_custom"]
-    # 2. Se existir no GitHub, carrega do ficheiro
     if os.path.exists(FICHEIRO_ESCALA):
         return pd.read_csv(FICHEIRO_ESCALA).fillna("")
-    # 3. Caso contrário, usa a escala base COBR20
     return gerar_escala_base()
 
 def calcular_horas_noturnas(inicio_str, fim_str):
@@ -156,7 +153,7 @@ rh = round((rm * 12.0) / (52.0 * 40.0), 2)
 # --- MENU DE NAVEGAÇÃO ---
 pagina = st.radio(
     "Navegação:",
-    ["📅 1. Escala Mensal (Escolher Serviço)", "🧾 2. Simulador de Recibo", "⚙️ 3. Carregar / Gerir Escala (PC)"],
+    ("📅 1. Escala Mensal (Escolher Serviço)", "🧾 2. Simulador de Recibo", "⚙️ 3. Carregar / Gerir Escala (PC)"),
     horizontal=True
 )
 st.divider()
@@ -172,5 +169,7 @@ if pagina == "📅 1. Escala Mensal (Escolher Serviço)":
     }
     
     st.subheader("1️⃣ Define a tua rotação neste mês")
-    c_mes, c_ano, c_os1, c_btn = st.columns([1, 1, 1.5, 1.5])
+    c_mes, c_ano, c_os1, c_btn = st.columns(4)
     with c_mes:
+        mes = st.selectbox("Mês", list(meses_pt.keys()), index=10, format_func=lambda x: meses_pt[x])
+    with c_ano:
