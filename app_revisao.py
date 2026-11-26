@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import calendar
 from datetime import datetime, timedelta
-import os
 import re
 import pdfplumber
 
@@ -23,49 +22,114 @@ INDICES_LISTA = (
 
 def gerar_escala_base():
     descansos = {1, 7, 8, 15, 16, 23, 24, 31, 32, 39, 40, 47, 48, 55, 56, 63, 64, 71, 72, 79, 80, 87, 88, 95, 96, 103, 104, 111, 112, 119, 120}
+    supras = {11, 89, 90, 114, 115}
     registos = list()
     for num_os in range(1, 121):
         if num_os in descansos:
-            registos.append({"OS": num_os, "Tipo": "Descanso", "Inicio": "", "Fim": "", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "Descanso Semanal"})
+            registos.append({"Codigo": f"OS {num_os:03d} | Descanso", "OS": num_os, "Regime": "1..7", "Tipo": "Descanso", "Local_Ini": "", "Inicio": "", "Local_Fim": "", "Fim": "", "PNT": "00:00", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "Descanso Semanal"})
+        elif num_os in supras:
+            registos.append({"Codigo": f"OS {num_os:03d} | SUPRA (08:00)", "OS": num_os, "Regime": "1..7", "Tipo": "SUPRA", "Local_Ini": "COB", "Inicio": "08:00", "Local_Fim": "COB", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "SUPRA"})
         else:
-            registos.append({"OS": num_os, "Tipo": "Bordo", "Inicio": "08:00", "Fim": "16:00", "Min_Rev": 300, "Rep_Fora": "Não", "Obs": f"Serviço OS {num_os}"})
+            registos.append({"Codigo": f"OS {num_os:03d} | Serviço Base (08:00-16:00)", "OS": num_os, "Regime": "1..7", "Tipo": "Bordo", "Local_Ini": "COB", "Inicio": "08:00", "Local_Fim": "COB", "Fim": "16:00", "PNT": "08:00", "Min_Rev": 300, "Rep_Fora": "Não", "Obs": f"Serviço OS {num_os}"})
     return pd.DataFrame(registos)
 
 def ler_pdf_escala_cp(ficheiro_pdf):
-    registos_por_os = dict()
+    """Lê TODAS as 120 OS e todas as suas variantes (N, S, F, V) de todas as páginas do PDF da CP."""
+    registos = list()
     with pdfplumber.open(ficheiro_pdf) as pdf:
         os_atual = None
         for page in pdf.pages:
             tabelas = page.extract_tables()
             for tabela in tabelas:
                 for linha in tabela:
-                    if not linha or len(linha) < 5:
+                    if not linha:
                         continue
                     celulas = tuple(str(c).replace("\n", " ").strip() if c else "" for c in linha)
-                    if "Dias da" in celulas or "EM VIGOR" in celulas:
+                    texto_completo = " ".join(celulas).strip()
+                    if not texto_completo or "EM VIGOR DESDE" in texto_completo or "Dias da Semana" in texto_completo or "F.500.02.002" in texto_completo:
                         continue
-                    primeira = next(iter(celulas), "")
-                    if primeira.isdigit():
-                        os_atual = int(primeira)
+
+                    # Detetar número da OS na 1.ª coluna (1 a 120)
+                    c0 = next(iter(celulas), "")
+                    if c0.isdigit() and 1 <= int(c0) <= 150:
+                        os_atual = int(c0)
                     if os_atual is None:
                         continue
-                    texto_linha = " ".join(celulas)
-                    if os_atual not in registos_por_os:
-                        if "Descanso" in texto_linha:
-                            registos_por_os.update({os_atual: {"OS": os_atual, "Tipo": "Descanso", "Inicio": "", "Fim": "", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "Descanso"}})
-                        elif "SUPRA" in texto_linha:
-                            registos_por_os.update({os_atual: {"OS": os_atual, "Tipo": "SUPRA", "Inicio": "08:00", "Fim": "16:00", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": "SUPRA"}})
+
+                    # Extrair colunas por posição segura
+                    it_c = iter(celulas)
+                    _ = next(it_c, "")
+                    regime = next(it_c, "")
+                    loc_ini = next(it_c, "")
+                    hora_ini = next(it_c, "")
+                    designacao = next(it_c, "")
+                    loc_fim = next(it_c, "")
+                    hora_fim = next(it_c, "")
+                    pnt = next(it_c, "")
+                    rep_s = next(it_c, "")
+                    rep_f = next(it_c, "")
+
+                    # Ignorar linhas de continuação sem regime nem designação
+                    if not regime and not designacao and not hora_ini and not hora_fim:
+                        continue
+
+                    # Identificar Tipo de Serviço
+                    if "Descanso" in texto_completo:
+                        tipo = "Descanso"
+                        min_rev = 0
+                        rep_fora = "Não"
+                        desc_curta = "Descanso"
+                    elif "SUPRA" in texto_completo:
+                        tipo = "SUPRA"
+                        min_rev = 0
+                        rep_fora = "Não"
+                        desc_curta = "SUPRA"
+                    else:
+                        # Verificar se é só Reserva ou se tem comboios comerciais
+                        tem_comboios = bool(re.search(r"\b\d{3,5}\b", designacao))
+                        tipo = "Bordo" if tem_comboios else "Reserva"
+                        
+                        # Calcular PNT em minutos e estimar minutos de revisão (descontando TR 45m e s/s)
+                        horas_pnt = re.findall(r"\b\d{1,2}:\d{2}\b", pnt)
+                        if horas_pnt:
+                            hp, mp = map(int, next(iter(horas_pnt)).split(":"))
+                            total_pnt_min = hp * 60 + mp
                         else:
-                            horas = re.findall(r"\b\d{1,2}:\d{2}\b", texto_linha)
-                            it_h = iter(horas)
-                            inicio = next(it_h, "08:00")
-                            fim = next(it_h, "16:00")
-                            rep_fora = "Sim (<18h)" if texto_linha.lower().endswith(" x") or " x " in texto_linha.lower() else "Não"
-                            registos_por_os.update({os_atual: {"OS": os_atual, "Tipo": "Bordo", "Inicio": inicio, "Fim": fim, "Min_Rev": 300, "Rep_Fora": rep_fora, "Obs": texto_linha[:40]}})
-    if not registos_por_os:
+                            total_pnt_min = 420
+                        
+                        desconto_tr = 45 if "(TR)" in designacao else 0
+                        qtd_ss = len(re.findall(r"s/s", designacao))
+                        min_rev = max(0, total_pnt_min - desconto_tr - (qtd_ss * 35)) if tipo == "Bordo" else 0
+
+                        # Verificar se termina fora da sede (REP F marcado com x ou local fim != local ini/sede)
+                        if rep_f.lower() == "x" or (loc_fim and loc_fim not in ("COB", "")):
+                            rep_fora = "Sim (<18h)"
+                        else:
+                            rep_fora = "Não"
+                        desc_curta = designacao[:42] if designacao else f"Serviço OS {os_atual}"
+
+                    horario_txt = f"{hora_ini}-{hora_fim}" if hora_ini or hora_fim else pnt
+                    reg_txt = regime if regime else "Geral"
+                    codigo_label = f"OS {os_atual:03d} | {reg_txt} | {horario_txt} | {desc_curta}"
+
+                    registos.append({
+                        "Codigo": codigo_label,
+                        "OS": os_atual,
+                        "Regime": reg_txt,
+                        "Tipo": tipo,
+                        "Local_Ini": loc_ini,
+                        "Inicio": hora_ini,
+                        "Local_Fim": loc_fim,
+                        "Fim": hora_fim,
+                        "PNT": pnt,
+                        "Min_Rev": min_rev,
+                        "Rep_Fora": rep_fora,
+                        "Obs": desc_curta
+                    })
+
+    if not registos:
         return gerar_escala_base()
-    lista_ordenada = tuple(registos_por_os.get(k) for k in sorted(registos_por_os.keys()))
-    return pd.DataFrame(lista_ordenada)
+    return pd.DataFrame(registos)
 
 def calcular_horas_noturnas(inicio_str, fim_str):
     if not inicio_str or not fim_str or ":" not in str(inicio_str) or ":" not in str(fim_str):
@@ -99,26 +163,32 @@ def calcular_abono_falhas(receita_total):
 st.set_page_config(page_title="Simulador CP Revisão", page_icon="🚆", layout="wide")
 st.title("🚆 Simulador de Abonos — Revisão Comercial (CP)")
 
-# --- BOTÃO DE CARREGAR ESCALA SEMPRE VISÍVEL NO TOPO ---
-with st.expander("📂 CARREGAR ESCALA DO PC (PDF da CP / Excel / CSV) — Clica aqui para abrir", expanded=True):
+# --- 1. CARREGAR ESCALA DO PC ---
+with st.expander("📂 1. CARREGAR ESCALA DO PC (PDF da CP / Excel / CSV)", expanded=True):
     ficheiro_carregado = st.file_uploader("Seleciona o ficheiro da escala no teu computador", type=("pdf", "csv", "xlsx"))
     if ficheiro_carregado is not None:
-        try:
-            nome_fich = ficheiro_carregado.name.lower()
-            if nome_fich.endswith(".pdf"):
-                df_novo = ler_pdf_escala_cp(ficheiro_carregado)
-            elif nome_fich.endswith(".csv"):
-                df_novo = pd.read_csv(ficheiro_carregado).fillna("")
-            else:
-                df_novo = pd.read_excel(ficheiro_carregado).fillna("")
-            st.session_state.update({"df_escala_custom": df_novo, "nome_escala_atual": ficheiro_carregado.name})
-            st.success(f"✅ Escala '{ficheiro_carregado.name}' carregada com {len(df_novo)} OS!")
-        except Exception as e:
-            st.error(f"Erro ao ler ficheiro: {e}")
+        if st.session_state.get("ultimo_ficheiro") != ficheiro_carregado.name:
+            try:
+                nome_fich = ficheiro_carregado.name.lower()
+                if nome_fich.endswith(".pdf"):
+                    df_novo = ler_pdf_escala_cp(ficheiro_carregado)
+                elif nome_fich.endswith(".csv"):
+                    df_novo = pd.read_csv(ficheiro_carregado).fillna("")
+                else:
+                    df_novo = pd.read_excel(ficheiro_carregado).fillna("")
+                st.session_state.update({
+                    "df_escala_custom": df_novo,
+                    "ultimo_ficheiro": ficheiro_carregado.name
+                })
+                if "df_mes" in st.session_state:
+                    del st.session_state["df_mes"]
+                st.success(f"✅ Escala '{ficheiro_carregado.name}' carregada com {len(df_novo)} linhas de serviço (OS 1 a {df_novo.get('OS').max()})!")
+            except Exception as e:
+                st.error(f"Erro ao ler ficheiro: {e}")
 
 df_escala = st.session_state.get("df_escala_custom", gerar_escala_base())
-mapa_escala = df_escala.set_index("OS").to_dict(orient="index")
-max_os = int(df_escala.get("OS").max()) if len(df_escala) > 0 else 120
+lista_codigos_os = tuple(df_escala.get("Codigo").tolist())
+mapa_por_codigo = df_escala.set_index("Codigo").to_dict(orient="index")
 
 # --- MENU LATERAL ---
 st.sidebar.header("👤 Dados do Trabalhador")
@@ -131,66 +201,3 @@ st.sidebar.divider()
 st.sidebar.header("💶 Vendas a Bordo")
 receita_bordo = st.sidebar.number_input("Receita Total (€)", min_value=0.0, value=0.0, step=10.0)
 qtd_bilhetes = st.sidebar.number_input("Qtd. Bilhetes Vendidos", min_value=0, value=0, step=1)
-valor_por_bilhete = st.sidebar.number_input("Comissão por Bilhete (€)", min_value=0.0, value=0.0, step=0.05)
-
-st.sidebar.divider()
-st.sidebar.header("🏛️ Descontos")
-taxa_irs = st.sidebar.number_input("Taxa IRS (%)", min_value=0.0, max_value=50.0, value=14.5, step=0.5)
-quota_sindical_pct = st.sidebar.number_input("Quota Sindical (%)", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
-outros_descontos = st.sidebar.number_input("Outros Descontos (€)", min_value=0.0, value=0.0, step=1.0)
-
-# --- CÁLCULOS BASE ---
-retrib_base = TABELA_INDICES.get(indice, 1166.78)
-valor_diut = num_diut * 25.00
-valor_sub_escala = round(retrib_base * 0.185, 2) if tem_escala else 0.0
-rm = round(retrib_base + valor_diut + valor_sub_escala, 2)
-rh = round((rm * 12.0) / (52.0 * 40.0), 2)
-
-st.divider()
-st.subheader("📅 1. Escolher o Serviço e Mês")
-mes = st.selectbox("Mês", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), index=10)
-ano = st.number_input("Ano", min_value=2024, max_value=2030, value=2026)
-os_dia_1 = st.number_input(f"Qual é a tua OS no Dia 1 do mês? (1 a {max_os})", min_value=1, max_value=max_os, value=1)
-
-_, num_dias = calendar.monthrange(ano, mes)
-dias_semana_pt = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
-nome_escala = st.session_state.get("nome_escala_atual", "Base")
-chave_atual = f"{nome_escala}-{ano}-{mes}-{os_dia_1}"
-
-if st.button("🔄 Gerar / Reiniciar Mês") or st.session_state.get("chave_mes") != chave_atual or "df_mes" not in st.session_state:
-    dados_mes = list()
-    for dia in range(1, num_dias + 1):
-        data_atual = datetime(ano, mes, dia)
-        dia_sem = dias_semana_pt.index(dias_semana_pt) if False else tuple(dias_semana_pt).__getitem__(data_atual.weekday())
-        os_atual = ((os_dia_1 - 1 + (dia - 1)) % max_os) + 1
-        linha_os = mapa_escala.get(os_atual, {"Tipo": "Descanso", "Inicio": "", "Fim": "", "Min_Rev": 0, "Rep_Fora": "Não", "Obs": ""})
-        tipo = linha_os.get("Tipo", "Descanso")
-        inicio = linha_os.get("Inicio", "")
-        fim = linha_os.get("Fim", "")
-        min_rev = int(float(linha_os.get("Min_Rev", 0))) if str(linha_os.get("Min_Rev", "")).strip() != "" else 0
-        rep_fora = linha_os.get("Rep_Fora", "Não")
-        obs = linha_os.get("Obs", "")
-        h_noturnas = calcular_horas_noturnas(inicio, fim) if tipo in ("Bordo", "SUPRA") else 0.0
-        dados_mes.append({
-            "Dia": dia, "Semana": dia_sem, "OS": os_atual, "Serviço": obs,
-            "Situação": tipo, "Início": inicio, "Fim": fim,
-            "H. Noturnas": h_noturnas, "Min. Revisão (mr)": min_rev,
-            "H. Extras": 0.0, "Dia Desc. Trab.": "Não", "Repouso Fora": rep_fora, "RENFE": False
-        })
-    st.session_state.update({"df_mes": pd.DataFrame(dados_mes), "chave_mes": chave_atual})
-
-df_mes_editado = st.data_editor(
-    st.session_state.get("df_mes"),
-    column_config={
-        "Situação": st.column_config.SelectboxColumn("Situação", options=("Bordo", "SUPRA", "Descanso", "Feriado", "Férias", "Formação", "Falta")),
-        "Dia Desc. Trab.": st.column_config.SelectboxColumn("Dia Desc./Fer. Trab.", options=("Não", "Com Compensação (+50%)", "Sem Compensação (+75%)")),
-        "Repouso Fora": st.column_config.SelectboxColumn("Repouso Fora Sede", options=("Não", "Sim (<18h)", "Sim (>18h)")),
-    },
-    use_container_width=True,
-    hide_index=True
-)
-
-st.divider()
-st.subheader("🧾 2. Resumo do Recibo Calculado")
-
-dias_bordo = len(df_mes_editado.query("Situação == 'Bordo'"))
