@@ -16,6 +16,12 @@ TABELA_INDICES = {
     266: 1895.78, 273: 1936.24, 280: 1976.70, 288: 2025.30, 296: 2073.88
 }
 
+INDICES_LISTA = (
+    128, 131, 134, 137, 140, 144, 148, 152, 156, 161,
+    166, 171, 176, 182, 189, 196, 203, 210, 217, 224,
+    231, 238, 245, 252, 259, 266, 273, 280, 288, 296
+)
+
 VALORES_PECUNIARIOS = {
     "diuturnidade_unit": 25.00,
     "subsidio_escala_pct": 0.185,
@@ -126,7 +132,7 @@ mapa_escala = df_escala.set_index("OS").to_dict(orient="index")
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.header("👤 Dados do Trabalhador")
-    indice = st.selectbox("Índice Salarial (ORV: 137 a 171)", list(TABELA_INDICES.keys()), index=3)
+    indice = st.selectbox("Índice Salarial (ORV: 137 a 171)", INDICES_LISTA, index=3)
     num_diut = st.slider("N.º de Diuturnidades (25,00 €/cada)", 0, 5, 2)
     tem_escala = st.checkbox("Subsídio de Escala (18,50%)", value=True)
     tem_transporte = st.checkbox("Disponibilidade 00h-06h30 (Abono Transp.)", value=True)
@@ -143,9 +149,9 @@ with st.sidebar:
     quota_sindical_pct = st.number_input("Quota Sindical (% sobre Base)", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
     outros_descontos = st.number_input("Outros Descontos Fixos (€)", min_value=0.0, value=0.0, step=1.0)
 
-retrib_base = TABELA_INDICES[indice]
-valor_diut = num_diut * VALORES_PECUNIARIOS["diuturnidade_unit"]
-valor_sub_escala = round(retrib_base * VALORES_PECUNIARIOS["subsidio_escala_pct"], 2) if tem_escala else 0.0
+retrib_base = TABELA_INDICES.get(indice, 1166.78)
+valor_diut = num_diut * VALORES_PECUNIARIOS.get("diuturnidade_unit", 25.0)
+valor_sub_escala = round(retrib_base * VALORES_PECUNIARIOS.get("subsidio_escala_pct", 0.185), 2) if tem_escala else 0.0
 rm = round(retrib_base + valor_diut + valor_sub_escala, 2)
 rd = round(rm / 30.0, 2)
 rh = round((rm * 12.0) / (52.0 * 40.0), 2)
@@ -168,8 +174,3 @@ if pagina == "📅 1. Escala Mensal (Escolher Serviço)":
         9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
     }
     
-    st.subheader("1️⃣ Define a tua rotação neste mês")
-    c_mes, c_ano, c_os1, c_btn = st.columns(4)
-    with c_mes:
-        mes = st.selectbox("Mês", list(meses_pt.keys()), index=10, format_func=lambda x: meses_pt[x])
-    with c_ano:
